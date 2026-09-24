@@ -24,6 +24,18 @@ class PathNormalizerMiddleware:
     async def __call__(self, scope, receive, send):
         if scope["type"] == "http":
             path = scope.get("path", "")
+            # Check for Vercel matched path header if route was rewritten
+            if "index.py" in path or path in ("/api", "/api/"):
+                headers = dict(scope.get("headers", []))
+                matched = headers.get(b"x-matched-path") or headers.get(b"x-vercel-matched-path")
+                if matched:
+                    try:
+                        matched_str = matched.decode("utf-8")
+                        if matched_str and "index.py" not in matched_str:
+                            path = matched_str.split("?")[0]
+                    except Exception:
+                        pass
+
             api_prefixes = (
                 "dashboard", "actors", "personas", "persona",
                 "infrastructure", "relationships", "timeline",
@@ -31,8 +43,11 @@ class PathNormalizerMiddleware:
             )
             stripped = path.lstrip("/")
             if any(stripped.startswith(prefix) for prefix in api_prefixes) and not path.startswith("/api"):
-                scope = dict(scope)
-                scope["path"] = "/api/" + stripped
+                path = "/api/" + stripped
+            
+            scope = dict(scope)
+            scope["path"] = path
+
         await self.app(scope, receive, send)
 
 app = PathNormalizerMiddleware(fastapi_app)

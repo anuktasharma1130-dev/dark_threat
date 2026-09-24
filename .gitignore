@@ -5,7 +5,6 @@ node_modules/
 .env.*
 *.db
 !backend/darktrace.db
-dist/
 build/
 .vite/
 .venv/

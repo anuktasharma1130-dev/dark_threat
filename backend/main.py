@@ -32,7 +32,9 @@ app.add_middleware(
 )
 
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-FRONTEND_DIST = os.path.join(ROOT_DIR, "dist")
+FRONTEND_DIST = os.path.join(ROOT_DIR, "public")
+if not os.path.exists(FRONTEND_DIST):
+    FRONTEND_DIST = os.path.join(ROOT_DIR, "dist")
 if not os.path.exists(FRONTEND_DIST):
     FRONTEND_DIST = os.path.join(ROOT_DIR, "frontend", "dist")
 
@@ -846,6 +848,19 @@ def generate_report(req: ReportGenerateRequest):
         "attribution_confidence": confidence,
         "limitations_and_disclaimer": "This report is generated for Smart India Hackathon (SIH 2026) screening evaluation under PS 26151. All indicators, hidden services (.onion), wallet addresses, and clearnet references (*.example) are 100% synthetic demonstration data."
     }
+
+# Automatically clone all /api routes to their non-/api equivalents
+for route in list(app.routes):
+    if hasattr(route, "path") and route.path.startswith("/api/"):
+        alt_path = route.path[4:]
+        if not any(r.path == alt_path for r in app.routes):
+            app.add_api_route(
+                alt_path,
+                route.endpoint,
+                methods=list(route.methods or ["GET"]),
+                response_model=getattr(route, "response_model", None),
+                include_in_schema=False
+            )
 
 @app.get("/{catchall:path}")
 def serve_spa(catchall: str):
