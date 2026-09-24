@@ -2,10 +2,13 @@ import io
 import csv
 import json
 import time
+import os
 from datetime import datetime
 from typing import Optional, List
 from fastapi import FastAPI, Query, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from database import get_db
@@ -27,6 +30,20 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+FRONTEND_DIST = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend", "dist"))
+INDEX_FILE = os.path.join(FRONTEND_DIST, "index.html")
+ASSETS_DIR = os.path.join(FRONTEND_DIST, "assets")
+
+if os.path.exists(ASSETS_DIR):
+    app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")
+
+@app.get("/")
+def serve_root():
+    if os.path.exists(INDEX_FILE):
+        return FileResponse(INDEX_FILE)
+    return {"message": "DARKTRACE API running", "status": "online"}
+
 
 # ----------------- PYDANTIC MODELS ----------------- #
 
@@ -824,3 +841,13 @@ def generate_report(req: ReportGenerateRequest):
         "attribution_confidence": confidence,
         "limitations_and_disclaimer": "This report is generated for Smart India Hackathon (SIH 2026) screening evaluation under PS 26151. All indicators, hidden services (.onion), wallet addresses, and clearnet references (*.example) are 100% synthetic demonstration data."
     }
+
+@app.get("/{catchall:path}")
+def serve_spa(catchall: str):
+    file_path = os.path.join(FRONTEND_DIST, catchall)
+    if catchall and os.path.isfile(file_path):
+        return FileResponse(file_path)
+    if os.path.exists(INDEX_FILE):
+        return FileResponse(INDEX_FILE)
+    raise HTTPException(status_code=404, detail="Not Found")
+

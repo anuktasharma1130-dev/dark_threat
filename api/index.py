@@ -15,7 +15,28 @@ if root_dir not in sys.path:
 os.environ["VERCEL"] = "1"
 
 # Import the FastAPI application instance
-from main import app
+from main import app as fastapi_app
+
+class PathNormalizerMiddleware:
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http":
+            path = scope.get("path", "")
+            api_prefixes = (
+                "dashboard", "actors", "personas", "persona",
+                "infrastructure", "relationships", "timeline",
+                "sources", "search", "collection", "export", "reports"
+            )
+            stripped = path.lstrip("/")
+            if any(stripped.startswith(prefix) for prefix in api_prefixes) and not path.startswith("/api"):
+                scope = dict(scope)
+                scope["path"] = "/api/" + stripped
+        await self.app(scope, receive, send)
+
+app = PathNormalizerMiddleware(fastapi_app)
 
 # Expose app for Vercel's ASGI serverless handler
 __all__ = ["app"]
+
