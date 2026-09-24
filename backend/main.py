@@ -31,12 +31,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-FRONTEND_DIST = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend", "dist"))
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+FRONTEND_DIST = os.path.join(ROOT_DIR, "dist")
+if not os.path.exists(FRONTEND_DIST):
+    FRONTEND_DIST = os.path.join(ROOT_DIR, "frontend", "dist")
+
 INDEX_FILE = os.path.join(FRONTEND_DIST, "index.html")
 ASSETS_DIR = os.path.join(FRONTEND_DIST, "assets")
 
 if os.path.exists(ASSETS_DIR):
     app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")
+
 
 @app.get("/")
 def serve_root():
