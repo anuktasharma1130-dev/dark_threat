@@ -1,9 +1,14 @@
-﻿__pycache__/
+__pycache__/
 *.pyc
 node_modules/
 .env
 .env.*
 *.db
+!backend/darktrace.db
 dist/
 build/
 .vite/
+.venv/
+backend/.venv/
+.vercel
+

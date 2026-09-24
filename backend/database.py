@@ -1,16 +1,20 @@
 import sqlite3
 import os
+import shutil
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "darktrace.db")
+LOCAL_DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "darktrace.db")
 
-def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+def get_db_path():
+    if os.environ.get("VERCEL"):
+        return "/tmp/darktrace.db"
+    return LOCAL_DB_PATH
 
-def init_db():
-    conn = get_db()
+DB_PATH = get_db_path()
+
+def _init_db_file(db_path):
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
+
 
     cursor.executescript('''
     CREATE TABLE IF NOT EXISTS actors (
@@ -161,6 +165,34 @@ def init_db():
     conn.commit()
     conn.close()
 
+def ensure_db():
+    current_db = get_db_path()
+    if not os.path.exists(current_db):
+        if os.path.exists(LOCAL_DB_PATH) and current_db != LOCAL_DB_PATH:
+            try:
+                shutil.copyfile(LOCAL_DB_PATH, current_db)
+                return
+            except Exception as e:
+                print(f"Failed to copy DB to {current_db}: {e}")
+        # Initialize tables
+        _init_db_file(current_db)
+        # Attempt to seed
+        try:
+            from seed_data import seed_database
+            seed_database()
+        except Exception as e:
+            print(f"Failed to seed DB: {e}")
+
+def init_db():
+    _init_db_file(get_db_path())
+
+def get_db():
+    ensure_db()
+    conn = sqlite3.connect(get_db_path())
+    conn.row_factory = sqlite3.Row
+    return conn
+
 if __name__ == "__main__":
     init_db()
     print("Database schema initialized.")
+

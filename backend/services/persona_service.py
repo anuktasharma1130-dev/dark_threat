@@ -1,8 +1,55 @@
 import json
 import re
-import numpy as np
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
+import math
+from collections import Counter
+
+try:
+    import numpy as np
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.metrics.pairwise import cosine_similarity
+    HAS_SKLEARN = True
+except ImportError:
+    HAS_SKLEARN = False
+
+def _pure_tfidf_sim(text_a: str, text_b: str):
+    words_a = re.findall(r'\b\w+\b', text_a.lower())
+    words_b = re.findall(r'\b\w+\b', text_b.lower())
+
+    def get_word_ngrams(words, n_min=1, n_max=3):
+        ngrams = []
+        for n in range(n_min, n_max + 1):
+            for i in range(len(words) - n + 1):
+                ngrams.append(" ".join(words[i:i+n]))
+        return Counter(ngrams)
+
+    def get_char_ngrams(text, n_min=3, n_max=5):
+        padded = f" {text.lower()} "
+        ngrams = []
+        for n in range(n_min, n_max + 1):
+            for i in range(len(padded) - n + 1):
+                ngrams.append(padded[i:i+n])
+        return Counter(ngrams)
+
+    def counter_cosine(c1, c2):
+        common = set(c1.keys()) & set(c2.keys())
+        if not common:
+            return 0.0
+        dot = sum(c1[k] * c2[k] for k in common)
+        n1 = math.sqrt(sum(v * v for v in c1.values()))
+        n2 = math.sqrt(sum(v * v for v in c2.values()))
+        if n1 == 0 or n2 == 0:
+            return 0.0
+        return dot / (n1 * n2)
+
+    w1 = get_word_ngrams(words_a)
+    w2 = get_word_ngrams(words_b)
+    word_sim = counter_cosine(w1, w2)
+
+    c1 = get_char_ngrams(text_a)
+    c2 = get_char_ngrams(text_b)
+    char_sim = counter_cosine(c1, c2)
+
+    return float(word_sim * 0.4 + char_sim * 0.6)
 
 def calculate_stylometric_similarity(text_a: str, text_b: str, is_same_actor: bool = False):
     """
@@ -17,16 +64,18 @@ def calculate_stylometric_similarity(text_a: str, text_b: str, is_same_actor: bo
         }
 
     # 1. Word & Char n-gram TF-IDF Cosine Similarity
-    word_vectorizer = TfidfVectorizer(ngram_range=(1, 3), stop_words='english', min_df=1)
-    word_tfidf = word_vectorizer.fit_transform([text_a, text_b])
-    word_sim = float(cosine_similarity(word_tfidf[0:1], word_tfidf[1:2])[0][0])
+    if HAS_SKLEARN:
+        word_vectorizer = TfidfVectorizer(ngram_range=(1, 3), stop_words='english', min_df=1)
+        word_tfidf = word_vectorizer.fit_transform([text_a, text_b])
+        word_sim = float(cosine_similarity(word_tfidf[0:1], word_tfidf[1:2])[0][0])
 
-    char_vectorizer = TfidfVectorizer(analyzer='char_wb', ngram_range=(3, 5))
-    char_tfidf = char_vectorizer.fit_transform([text_a, text_b])
-    char_sim = float(cosine_similarity(char_tfidf[0:1], char_tfidf[1:2])[0][0])
+        char_vectorizer = TfidfVectorizer(analyzer='char_wb', ngram_range=(3, 5))
+        char_tfidf = char_vectorizer.fit_transform([text_a, text_b])
+        char_sim = float(cosine_similarity(char_tfidf[0:1], char_tfidf[1:2])[0][0])
 
-    # Blend word and char n-gram similarity
-    raw_cos_sim = (word_sim * 0.4 + char_sim * 0.6)
+        raw_cos_sim = (word_sim * 0.4 + char_sim * 0.6)
+    else:
+        raw_cos_sim = _pure_tfidf_sim(text_a, text_b)
 
     # 2. Vocabulary Jaccard Similarity
     words_a = set(re.findall(r'\b\w+\b', text_a.lower()))
@@ -39,8 +88,8 @@ def calculate_stylometric_similarity(text_a: str, text_b: str, is_same_actor: bo
     sentences_a = [s.strip() for s in re.split(r'[.!?]+', text_a) if s.strip()]
     sentences_b = [s.strip() for s in re.split(r'[.!?]+', text_b) if s.strip()]
 
-    avg_len_a = np.mean([len(s.split()) for s in sentences_a]) if sentences_a else 1.0
-    avg_len_b = np.mean([len(s.split()) for s in sentences_b]) if sentences_b else 1.0
+    avg_len_a = (sum(len(s.split()) for s in sentences_a) / len(sentences_a)) if sentences_a else 1.0
+    avg_len_b = (sum(len(s.split()) for s in sentences_b) / len(sentences_b)) if sentences_b else 1.0
 
     max_len = max(avg_len_a, avg_len_b, 1.0)
     sentence_sim = 1.0 - (abs(avg_len_a - avg_len_b) / max_len)
@@ -67,21 +116,30 @@ def calculate_posting_time_similarity(dist_a: list, dist_b: list, is_same_actor:
     """
     Computes cosine similarity between 24-hour posting distributions.
     """
-    arr_a = np.array(dist_a, dtype=float)
-    arr_b = np.array(dist_b, dtype=float)
+    if HAS_SKLEARN:
+        arr_a = np.array(dist_a, dtype=float)
+        arr_b = np.array(dist_b, dtype=float)
+        norm_a = np.linalg.norm(arr_a)
+        norm_b = np.linalg.norm(arr_b)
+        if norm_a == 0 or norm_b == 0:
+            sim = 0.5
+        else:
+            sim = np.dot(arr_a, arr_b) / (norm_a * norm_b)
+    else:
+        dot = sum(float(a) * float(b) for a, b in zip(dist_a, dist_b))
+        norm_a = math.sqrt(sum(float(a) * float(a) for a in dist_a))
+        norm_b = math.sqrt(sum(float(b) * float(b) for b in dist_b))
+        if norm_a == 0 or norm_b == 0:
+            sim = 0.5
+        else:
+            sim = dot / (norm_a * norm_b)
 
-    norm_a = np.linalg.norm(arr_a)
-    norm_b = np.linalg.norm(arr_b)
-
-    if norm_a == 0 or norm_b == 0:
-        return 50.0
-
-    sim = np.dot(arr_a, arr_b) / (norm_a * norm_b)
     sim_percent = float(sim) * 100
 
     if is_same_actor:
         return round(min(95.0, max(79.0, sim_percent)), 1)
     return round(sim_percent, 1)
+
 
 def analyze_personas(persona_a: dict, persona_b: dict):
     """
