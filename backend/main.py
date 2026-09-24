@@ -51,12 +51,21 @@ def serve_root():
         return FileResponse(INDEX_FILE)
     return {"message": "DARKTRACE API running", "status": "online"}
 
+from fastapi import Request
+
 @app.get("/api")
 @app.get("/api/")
 @app.get("/api/index.py")
 @app.get("/api/health")
-def api_status():
-    return {"message": "DARKTRACE API running", "status": "online", "version": "1.0.0"}
+def api_status(request: Request):
+    matched = request.headers.get("x-matched-path") or request.headers.get("x-vercel-matched-path")
+    return {
+        "message": "DARKTRACE API running",
+        "status": "online",
+        "path": request.scope.get("path"),
+        "matched": matched,
+        "query": str(request.query_params)
+    }
 
 
 # ----------------- PYDANTIC MODELS ----------------- #
