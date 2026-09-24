@@ -51,6 +51,13 @@ def serve_root():
         return FileResponse(INDEX_FILE)
     return {"message": "DARKTRACE API running", "status": "online"}
 
+@app.get("/api")
+@app.get("/api/")
+@app.get("/api/index.py")
+@app.get("/api/health")
+def api_status():
+    return {"message": "DARKTRACE API running", "status": "online", "version": "1.0.0"}
+
 
 # ----------------- PYDANTIC MODELS ----------------- #
 
